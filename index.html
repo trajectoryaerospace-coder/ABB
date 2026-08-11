@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ABB Records & Expense Manager</title>
+    <title>Business Records & Expense Manager</title>
     <style>
         :root {
             --bg-dark: #0f172a;
@@ -44,6 +44,14 @@
         header h1 {
             font-size: 1.6rem;
             color: var(--text-main);
+        }
+
+        /* Sync Indicator */
+        .sync-status {
+            font-size: 0.8rem;
+            color: #38bdf8;
+            text-align: center;
+            margin-top: 5px;
         }
 
         /* Dashboard Overview */
@@ -247,7 +255,8 @@
 
 <div class="container">
     <header>
-        <h1>💼 ABB Manager Log - By Ayushman Kalita</h1>
+        <h1>💼 Business Manager Log</h1>
+        <div class="sync-status" id="syncStatus">🔄 Connecting to database...</div>
     </header>
 
     <div class="dashboard">
@@ -279,7 +288,7 @@
             <option value="Medium" selected>🟡 Med Priority</option>
             <option value="Low">🟢 Low Priority</option>
         </select>
-        <button class="btn-add" onclick="addItem()">Add Record</button>
+        <button class="btn-add" id="btnAdd">Add Record</button>
     </div>
 
     <div class="section sec-profit">
@@ -311,9 +320,27 @@
     </div>
 </div>
 
-<script>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+    import { getDatabase, ref, onValue, push, set, remove, update } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
+
+    // Firebase Config
+    const firebaseConfig = {
+        apiKey: "AIzaSyCDFfq0QVM5kAW_1fQwIVIMFEwJE8iRyvk",
+        authDomain: "esale-6da43.firebaseapp.com",
+        databaseURL: "https://esale-6da43-default-rtdb.firebaseio.com",
+        projectId: "esale-6da43",
+        storageBucket: "esale-6da43.firebasestorage.app",
+        messagingSenderId: "138363491169",
+        appId: "1:138363491169:web:2c2cab17b0584cf2c56b20"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const itemsRef = ref(db, 'records');
+
     const priorityWeight = { 'High': 3, 'Medium': 2, 'Low': 1 };
-    
     const icons = {
         profit: '💰',
         debit: '✅',
@@ -321,39 +348,7 @@
         investment: '🛠️'
     };
 
-    let items = [
-        // Debits
-        { id: 1, category: 'debit', name: 'Advance for Office', amount: '3000', priority: 'High' },
-        { id: 2, category: 'debit', name: 'Advance Banner / Standy Board', amount: '2000', priority: 'Medium' },
-        { id: 3, category: 'debit', name: 'Advance Fabrication', amount: '4000', priority: 'Medium' },
-        { id: 4, category: 'debit', name: 'Brokerage', amount: 'Nil', priority: 'Low' },
-
-        // Dues
-        { id: 5, category: 'due', name: 'Shop Deposit', amount: '17000', priority: 'High' },
-        { id: 6, category: 'due', name: 'Amaron Dealer', amount: '100000', priority: 'High' },
-        { id: 7, category: 'due', name: 'Banner and Standy', amount: '4500', priority: 'Medium' },
-        { id: 8, category: 'due', name: 'Scooty (Used)', amount: '20000', priority: 'Medium' },
-        { id: 9, category: 'due', name: 'Fabrication', amount: '10000', priority: 'Medium' },
-        { id: 10, category: 'due', name: 'Inverter', amount: '4000', priority: 'High' },
-        { id: 11, category: 'due', name: 'Fan', amount: '1000', priority: 'Low' },
-        { id: 12, category: 'due', name: 'Extension Board', amount: '2 Units', priority: 'Low' },
-        { id: 13, category: 'due', name: 'Electrician Cost', amount: '2000', priority: 'Medium' },
-        { id: 14, category: 'due', name: 'Electrical Material', amount: '2000', priority: 'Medium' },
-        { id: 15, category: 'due', name: 'Cupboard (Steel)', amount: '3000', priority: 'Low' },
-        { id: 16, category: 'due', name: 'Table (Counter) & Chairs', amount: '4 Units', priority: 'Medium' },
-        { id: 17, category: 'due', name: 'Cash Tijori', amount: '-', priority: 'High' },
-        { id: 18, category: 'due', name: 'Prayer Box & Laxmi Pictures', amount: '2000', priority: 'Low' },
-        { id: 19, category: 'due', name: 'Miscellaneous', amount: '2000', priority: 'Low' },
-        { id: 20, category: 'due', name: 'Petrol (Monthly)', amount: '3000', priority: 'Medium' },
-        { id: 21, category: 'due', name: 'Light Bill', amount: 'Pending', priority: 'High' },
-
-        // Inventory
-        { id: 22, category: 'investment', name: 'Distilled water for battery', amount: 'Stock', priority: 'Medium' },
-        { id: 23, category: 'investment', name: 'Coolant', amount: 'Stock', priority: 'Medium' },
-        { id: 24, category: 'investment', name: 'Lubricant', amount: 'Stock', priority: 'Medium' },
-        { id: 25, category: 'investment', name: 'Gear Oil', amount: 'Stock', priority: 'Medium' },
-        { id: 26, category: 'investment', name: 'Used Fridge', amount: 'Cold drinks, snacks, water', priority: 'Low' }
-    ];
+    let itemsMap = {};
 
     function parseAmount(val) {
         if (!val) return 0;
@@ -361,19 +356,18 @@
         return cleaned ? parseInt(cleaned, 10) : 0;
     }
 
-    function calculateTotals() {
+    function calculateTotals(itemsArray) {
         let totalProfit = 0;
         let totalPaid = 0;
         let totalDue = 0;
 
-        items.forEach(item => {
+        itemsArray.forEach(item => {
             const num = parseAmount(item.amount);
             if (item.category === 'profit') totalProfit += num;
             if (item.category === 'debit') totalPaid += num;
             if (item.category === 'due') totalDue += num;
         });
 
-        // Profit = Profit Earnings - Dues
         const netProfit = totalProfit - totalDue;
 
         document.getElementById('paidVal').innerText = `₹${totalPaid.toLocaleString('en-IN')}`;
@@ -390,20 +384,23 @@
     }
 
     function renderLists() {
-        // Reset container contents
         document.getElementById('profitList').innerHTML = '';
         document.getElementById('debitList').innerHTML = '';
         document.getElementById('dueList').innerHTML = '';
         document.getElementById('investmentList').innerHTML = '';
 
-        // Priority Sorting: High -> Medium -> Low
-        items.sort((a, b) => priorityWeight[b.priority] - priorityWeight[a.priority]);
+        const itemsArray = Object.keys(itemsMap).map(key => ({
+            id: key,
+            ...itemsMap[key]
+        }));
 
-        items.forEach(item => {
+        // Sort: High -> Medium -> Low
+        itemsArray.sort((a, b) => priorityWeight[b.priority] - priorityWeight[a.priority]);
+
+        itemsArray.forEach(item => {
             const card = document.createElement('div');
             card.className = `item-card type-${item.category}`;
             
-            // Format Amount Display
             const numVal = parseAmount(item.amount);
             const amountDisplay = numVal > 0 ? `₹${numVal.toLocaleString('en-IN')}` : (item.amount || '-');
 
@@ -417,50 +414,62 @@
                     </div>
                 </div>
                 <div class="actions">
-                    <button class="btn-action btn-edit" onclick="editItem(${item.id})">Edit</button>
-                    <button class="btn-action btn-delete" onclick="deleteItem(${item.id})">Delete</button>
+                    <button class="btn-action btn-edit" data-id="${item.id}">Edit</button>
+                    <button class="btn-action btn-delete" data-id="${item.id}">Delete</button>
                 </div>
             `;
 
-            const listId = `${item.category}List`;
-            const container = document.getElementById(listId);
+            const container = document.getElementById(`${item.category}List`);
             if (container) {
                 container.appendChild(card);
             }
         });
 
-        calculateTotals();
+        // Add Event Listeners to dynamic buttons
+        document.querySelectorAll('.btn-edit').forEach(btn => {
+            btn.addEventListener('click', (e) => editItem(e.target.dataset.id));
+        });
+        document.querySelectorAll('.btn-delete').forEach(btn => {
+            btn.addEventListener('click', (e) => deleteItem(e.target.dataset.id));
+        });
+
+        calculateTotals(itemsArray);
     }
 
-    function addItem() {
+    // Real-time listener from Firebase
+    onValue(itemsRef, (snapshot) => {
+        itemsMap = snapshot.val() || {};
+        renderLists();
+        document.getElementById('syncStatus').innerText = '🟢 Live & Synced with Database';
+    });
+
+    // Add Item
+    window.addItem = function() {
         const category = document.getElementById('category').value;
         const name = document.getElementById('itemName').value.trim();
         const amount = document.getElementById('itemAmount').value.trim();
         const priority = document.getElementById('itemPriority').value;
 
         if (!name) {
-            alert('Please enter a name or description.');
+            alert('Please enter a description.');
             return;
         }
 
-        const newItem = {
-            id: Date.now(),
+        const newRecordRef = push(itemsRef);
+        set(newRecordRef, {
             category,
             name,
             amount: amount || '-',
             priority
-        };
+        });
 
-        items.push(newItem);
-        renderLists();
-
-        // Clear input boxes
         document.getElementById('itemName').value = '';
         document.getElementById('itemAmount').value = '';
-    }
+    };
 
+    // Edit Item
     function editItem(id) {
-        const item = items.find(i => i.id === id);
+        const item = itemsMap[id];
         if (!item) return;
 
         const newName = prompt('Edit Description:', item.name);
@@ -470,25 +479,30 @@
         if (newAmount === null) return;
 
         const newPriority = prompt('Edit Priority (High, Medium, Low):', item.priority);
+        
+        let validPriority = item.priority;
         if (newPriority && ['High', 'Medium', 'Low'].includes(newPriority.trim())) {
-            item.priority = newPriority.trim();
+            validPriority = newPriority.trim();
         }
 
-        item.name = newName.trim() || item.name;
-        item.amount = newAmount.trim() || item.amount;
-
-        renderLists();
+        const itemRef = ref(db, `records/${id}`);
+        update(itemRef, {
+            name: newName.trim() || item.name,
+            amount: newAmount.trim() || item.amount,
+            priority: validPriority
+        });
     }
 
+    // Delete Item
     function deleteItem(id) {
-        if (confirm('Are you sure you want to delete this record?')) {
-            items = items.filter(item => item.id !== id);
-            renderLists();
+        if (confirm('Are you sure you want to delete this record from the database?')) {
+            const itemRef = ref(db, `records/${id}`);
+            remove(itemRef);
         }
     }
 
-    // Initial render call
-    renderLists();
+    // Bind Add Button Click
+    document.getElementById('btnAdd').addEventListener('click', window.addItem);
 </script>
 
 </body>
