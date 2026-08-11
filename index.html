@@ -387,7 +387,6 @@
         if (!val) return 0;
         let str = val.toString().toLowerCase().trim();
 
-        // Ignore non-monetary unit descriptions
         if (str.includes('unit') || str.includes('stock') || str.includes('pending') || str === 'nil' || str === '-') {
             return 0;
         }
@@ -420,7 +419,6 @@
             if (item.category === 'due') totalDue += num;
         });
 
-        // Net Profit = Revenue - Pending Dues
         const netProfit = totalProfit - totalDue;
 
         document.getElementById('paidVal').innerText = `₹${totalPaid.toLocaleString('en-IN')}`;
@@ -449,7 +447,6 @@
                 ...itemsMap[key]
             }));
 
-        // Sort by priority (High -> Medium -> Low)
         itemsArray.sort((a, b) => {
             const pA = priorityWeight[a.priority] || 1;
             const pB = priorityWeight[b.priority] || 1;
@@ -484,7 +481,6 @@
             }
         });
 
-        // Event listeners for action buttons
         document.querySelectorAll('.btn-edit').forEach(btn => {
             btn.addEventListener('click', (e) => editItem(e.currentTarget.dataset.id));
         });
@@ -567,9 +563,23 @@
         }).catch(err => alert("Error updating database: " + err.message));
     }
 
-    // Delete Item
+    // Delete / Settle Item
     function deleteItem(id) {
-        if (confirm('Are you sure you want to delete this record?')) {
+        const item = itemsMap[id];
+        if (!item) return;
+
+        // If deleting a pending DUE item, prompt to convert it to PAID (Debit)
+        if (item.category === 'due') {
+            const markAsPaid = confirm(`Mark "${item.name}" as PAID?\n\n• OK = Move to Paid Advances (increases Total Paid)\n• Cancel = Permanently Delete`);
+            if (markAsPaid) {
+                const itemRef = ref(db, `records/${id}`);
+                update(itemRef, { category: 'debit' })
+                    .catch(err => alert("Error updating record: " + err.message));
+                return;
+            }
+        }
+
+        if (confirm(`Are you sure you want to permanently delete "${item.name}"?`)) {
             const itemRef = ref(db, `records/${id}`);
             remove(itemRef).catch(err => alert("Error deleting record: " + err.message));
         }
