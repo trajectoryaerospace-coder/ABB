@@ -274,7 +274,7 @@
         </div>
     </div>
 
-    <div class="add-form">
+    <form class="add-form" id="recordForm">
         <select id="category">
             <option value="profit">📈 Profit / Revenue</option>
             <option value="debit">💸 Debit (Paid Advance)</option>
@@ -288,8 +288,8 @@
             <option value="Medium" selected>🟡 Med Priority</option>
             <option value="Low">🟢 Low Priority</option>
         </select>
-        <button class="btn-add" id="btnAdd">Add Record</button>
-    </div>
+        <button type="submit" class="btn-add" id="btnAdd">Add Record</button>
+    </form>
 
     <div class="section sec-profit">
         <div class="section-header">
@@ -348,15 +348,13 @@
         investment: '🛠️'
     };
 
-    // Initial Default Seed Data
+    // Default seed data if database is brand new
     const defaultItems = [
-        // Debits
         { category: 'debit', name: 'Advance for Office', amount: '3000', priority: 'High' },
         { category: 'debit', name: 'Advance Banner / Standy Board', amount: '2000', priority: 'Medium' },
         { category: 'debit', name: 'Advance Fabrication', amount: '4000', priority: 'Medium' },
         { category: 'debit', name: 'Brokerage', amount: 'Nil', priority: 'Low' },
 
-        // Dues
         { category: 'due', name: 'Shop Deposit', amount: '17000', priority: 'High' },
         { category: 'due', name: 'Amaron Dealer', amount: '100000', priority: 'High' },
         { category: 'due', name: 'Banner and Standy', amount: '4500', priority: 'Medium' },
@@ -375,7 +373,6 @@
         { category: 'due', name: 'Petrol (Monthly)', amount: '3000', priority: 'Medium' },
         { category: 'due', name: 'Light Bill', amount: 'Pending', priority: 'High' },
 
-        // Inventory
         { category: 'investment', name: 'Distilled water for battery', amount: 'Stock', priority: 'Medium' },
         { category: 'investment', name: 'Coolant', amount: 'Stock', priority: 'Medium' },
         { category: 'investment', name: 'Lubricant', amount: 'Stock', priority: 'Medium' },
@@ -385,10 +382,30 @@
 
     let itemsMap = {};
 
+    // Smart Amount Extractor
     function parseAmount(val) {
         if (!val) return 0;
-        const cleaned = val.toString().replace(/[^0-9]/g, '');
-        return cleaned ? parseInt(cleaned, 10) : 0;
+        let str = val.toString().toLowerCase().trim();
+
+        // Ignore non-monetary unit descriptions
+        if (str.includes('unit') || str.includes('stock') || str.includes('pending') || str === 'nil' || str === '-') {
+            return 0;
+        }
+
+        let multiplier = 1;
+        if (str.includes('lac') || str.includes('lakh')) {
+            multiplier = 100000;
+        } else if (str.includes('k') && !str.includes('stock')) {
+            multiplier = 1000;
+        }
+
+        const match = str.match(/[\d,.]+/);
+        if (!match) return 0;
+
+        const cleaned = match[0].replace(/,/g, '');
+        const num = parseFloat(cleaned);
+
+        return isNaN(num) ? 0 : Math.round(num * multiplier);
     }
 
     function calculateTotals(itemsArray) {
@@ -403,6 +420,7 @@
             if (item.category === 'due') totalDue += num;
         });
 
+        // Net Profit = Revenue - Pending Dues
         const netProfit = totalProfit - totalDue;
 
         document.getElementById('paidVal').innerText = `₹${totalPaid.toLocaleString('en-IN')}`;
@@ -424,13 +442,19 @@
         document.getElementById('dueList').innerHTML = '';
         document.getElementById('investmentList').innerHTML = '';
 
-        const itemsArray = Object.keys(itemsMap).map(key => ({
-            id: key,
-            ...itemsMap[key]
-        }));
+        const itemsArray = Object.keys(itemsMap)
+            .filter(key => itemsMap[key] && typeof itemsMap[key] === 'object')
+            .map(key => ({
+                id: key,
+                ...itemsMap[key]
+            }));
 
-        // Sort: High -> Medium -> Low
-        itemsArray.sort((a, b) => priorityWeight[b.priority] - priorityWeight[a.priority]);
+        // Sort by priority (High -> Medium -> Low)
+        itemsArray.sort((a, b) => {
+            const pA = priorityWeight[a.priority] || 1;
+            const pB = priorityWeight[b.priority] || 1;
+            return pB - pA;
+        });
 
         itemsArray.forEach(item => {
             const card = document.createElement('div');
@@ -441,7 +465,7 @@
 
             card.innerHTML = `
                 <div class="item-main">
-                    <span class="item-emoji">${icons[item.category]}</span>
+                    <span class="item-emoji">${icons[item.category] || '📌'}</span>
                     <div class="item-details">
                         <span class="item-title">${item.name}</span>
                         <span class="item-sub">${amountDisplay}</span>
@@ -460,18 +484,17 @@
             }
         });
 
-        // Add Event Listeners to dynamic buttons
+        // Event listeners for action buttons
         document.querySelectorAll('.btn-edit').forEach(btn => {
-            btn.addEventListener('click', (e) => editItem(e.target.dataset.id));
+            btn.addEventListener('click', (e) => editItem(e.currentTarget.dataset.id));
         });
         document.querySelectorAll('.btn-delete').forEach(btn => {
-            btn.addEventListener('click', (e) => deleteItem(e.target.dataset.id));
+            btn.addEventListener('click', (e) => deleteItem(e.currentTarget.dataset.id));
         });
 
         calculateTotals(itemsArray);
     }
 
-    // Auto-seed database if empty
     function seedInitialData() {
         defaultItems.forEach(item => {
             const newRef = push(itemsRef);
@@ -479,10 +502,9 @@
         });
     }
 
-    // Real-time listener from Firebase
+    // Realtime Database Listener
     onValue(itemsRef, (snapshot) => {
         if (!snapshot.exists()) {
-            // Seed database if empty
             seedInitialData();
             return;
         }
@@ -490,10 +512,13 @@
         itemsMap = snapshot.val() || {};
         renderLists();
         document.getElementById('syncStatus').innerText = '🟢 Live & Synced with Database';
+    }, (error) => {
+        document.getElementById('syncStatus').innerText = '🔴 Database Connection Error';
+        console.error(error);
     });
 
     // Add Item
-    window.addItem = function() {
+    function addItem() {
         const category = document.getElementById('category').value;
         const name = document.getElementById('itemName').value.trim();
         const amount = document.getElementById('itemAmount').value.trim();
@@ -510,11 +535,11 @@
             name,
             amount: amount || '-',
             priority
-        });
+        }).catch(err => alert("Error saving to database: " + err.message));
 
         document.getElementById('itemName').value = '';
         document.getElementById('itemAmount').value = '';
-    };
+    }
 
     // Edit Item
     function editItem(id) {
@@ -539,19 +564,22 @@
             name: newName.trim() || item.name,
             amount: newAmount.trim() || item.amount,
             priority: validPriority
-        });
+        }).catch(err => alert("Error updating database: " + err.message));
     }
 
     // Delete Item
     function deleteItem(id) {
-        if (confirm('Are you sure you want to delete this record from the database?')) {
+        if (confirm('Are you sure you want to delete this record?')) {
             const itemRef = ref(db, `records/${id}`);
-            remove(itemRef);
+            remove(itemRef).catch(err => alert("Error deleting record: " + err.message));
         }
     }
 
-    // Bind Add Button Click
-    document.getElementById('btnAdd').addEventListener('click', window.addItem);
+    // Bind Form Submit
+    document.getElementById('recordForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        addItem();
+    });
 </script>
 
 </body>
