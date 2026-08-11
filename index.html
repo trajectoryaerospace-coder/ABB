@@ -69,6 +69,27 @@
             border: 1px solid var(--border-color);
             text-align: center;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transition: transform 0.15s ease, border-color 0.15s ease;
+        }
+
+        /* Interactive Paid Card */
+        .stat-card.paid {
+            cursor: pointer;
+            position: relative;
+        }
+
+        .stat-card.paid:hover {
+            transform: translateY(-2px);
+            border-color: var(--debit-color);
+            background: #24334a;
+        }
+
+        .stat-card.paid::after {
+            content: "Click to Edit";
+            display: block;
+            font-size: 0.65rem;
+            color: var(--text-sub);
+            margin-top: 4px;
         }
 
         .stat-card h3 {
@@ -264,8 +285,8 @@
             <h3>Net Profit</h3>
             <div class="amount" id="profitVal">₹0</div>
         </div>
-        <div class="stat-card paid">
-            <h3>Total Paid</h3>
+        <div class="stat-card paid" id="paidCard" title="Click to manually edit Total Paid">
+            <h3>Total Paid ✏️</h3>
             <div class="amount" id="paidVal">₹0</div>
         </div>
         <div class="stat-card due">
@@ -339,6 +360,7 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const itemsRef = ref(db, 'records');
+    const paidOffsetRef = ref(db, 'paidOffset');
 
     const priorityWeight = { 'High': 3, 'Medium': 2, 'Low': 1 };
     const icons = {
@@ -381,6 +403,9 @@
     ];
 
     let itemsMap = {};
+    let currentPaidOffset = 0;
+    let currentSumDebits = 0;
+    let currentTotalPaid = 0;
 
     // Smart Amount Extractor
     function parseAmount(val) {
@@ -409,19 +434,22 @@
 
     function calculateTotals(itemsArray) {
         let totalProfit = 0;
-        let totalPaid = 0;
+        let totalPaidItems = 0;
         let totalDue = 0;
 
         itemsArray.forEach(item => {
             const num = parseAmount(item.amount);
             if (item.category === 'profit') totalProfit += num;
-            if (item.category === 'debit') totalPaid += num;
+            if (item.category === 'debit') totalPaidItems += num;
             if (item.category === 'due') totalDue += num;
         });
 
+        currentSumDebits = totalPaidItems;
+        currentTotalPaid = totalPaidItems + currentPaidOffset;
+
         const netProfit = totalProfit - totalDue;
 
-        document.getElementById('paidVal').innerText = `₹${totalPaid.toLocaleString('en-IN')}`;
+        document.getElementById('paidVal').innerText = `₹${currentTotalPaid.toLocaleString('en-IN')}`;
         document.getElementById('dueVal').innerText = `₹${totalDue.toLocaleString('en-IN')}`;
         
         const profitElem = document.getElementById('profitVal');
@@ -498,7 +526,7 @@
         });
     }
 
-    // Realtime Database Listener
+    // Realtime Database Listener for Records
     onValue(itemsRef, (snapshot) => {
         if (!snapshot.exists()) {
             seedInitialData();
@@ -511,6 +539,27 @@
     }, (error) => {
         document.getElementById('syncStatus').innerText = '🔴 Database Connection Error';
         console.error(error);
+    });
+
+    // Realtime Database Listener for Manual Paid Offset
+    onValue(paidOffsetRef, (snapshot) => {
+        currentPaidOffset = snapshot.val() || 0;
+        const itemsArray = Object.keys(itemsMap)
+            .filter(key => itemsMap[key] && typeof itemsMap[key] === 'object')
+            .map(key => ({ id: key, ...itemsMap[key] }));
+        calculateTotals(itemsArray);
+    });
+
+    // Direct Total Paid Editor
+    document.getElementById('paidCard').addEventListener('click', () => {
+        const userInput = prompt("Set new Total Paid amount (₹):", currentTotalPaid);
+        if (userInput === null) return;
+
+        const newTotal = parseAmount(userInput);
+        const newOffset = newTotal - currentSumDebits;
+
+        set(paidOffsetRef, newOffset)
+            .catch(err => alert("Error updating Total Paid: " + err.message));
     });
 
     // Add Item
@@ -568,7 +617,6 @@
         const item = itemsMap[id];
         if (!item) return;
 
-        // If deleting a pending DUE item, prompt to convert it to PAID (Debit)
         if (item.category === 'due') {
             const markAsPaid = confirm(`Mark "${item.name}" as PAID?\n\n• OK = Move to Paid Advances (increases Total Paid)\n• Cancel = Permanently Delete`);
             if (markAsPaid) {
