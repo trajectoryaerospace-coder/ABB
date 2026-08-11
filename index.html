@@ -348,6 +348,41 @@
         investment: '🛠️'
     };
 
+    // Initial Default Seed Data
+    const defaultItems = [
+        // Debits
+        { category: 'debit', name: 'Advance for Office', amount: '3000', priority: 'High' },
+        { category: 'debit', name: 'Advance Banner / Standy Board', amount: '2000', priority: 'Medium' },
+        { category: 'debit', name: 'Advance Fabrication', amount: '4000', priority: 'Medium' },
+        { category: 'debit', name: 'Brokerage', amount: 'Nil', priority: 'Low' },
+
+        // Dues
+        { category: 'due', name: 'Shop Deposit', amount: '17000', priority: 'High' },
+        { category: 'due', name: 'Amaron Dealer', amount: '100000', priority: 'High' },
+        { category: 'due', name: 'Banner and Standy', amount: '4500', priority: 'Medium' },
+        { category: 'due', name: 'Scooty (Used)', amount: '20000', priority: 'Medium' },
+        { category: 'due', name: 'Fabrication', amount: '10000', priority: 'Medium' },
+        { category: 'due', name: 'Inverter', amount: '4000', priority: 'High' },
+        { category: 'due', name: 'Fan', amount: '1000', priority: 'Low' },
+        { category: 'due', name: 'Extension Board', amount: '2 Units', priority: 'Low' },
+        { category: 'due', name: 'Electrician Cost', amount: '2000', priority: 'Medium' },
+        { category: 'due', name: 'Electrical Material', amount: '2000', priority: 'Medium' },
+        { category: 'due', name: 'Cupboard (Steel)', amount: '3000', priority: 'Low' },
+        { category: 'due', name: 'Table (Counter) & Chairs', amount: '4 Units', priority: 'Medium' },
+        { category: 'due', name: 'Cash Tijori', amount: '-', priority: 'High' },
+        { category: 'due', name: 'Prayer Box & Laxmi Pictures', amount: '2000', priority: 'Low' },
+        { category: 'due', name: 'Miscellaneous', amount: '2000', priority: 'Low' },
+        { category: 'due', name: 'Petrol (Monthly)', amount: '3000', priority: 'Medium' },
+        { category: 'due', name: 'Light Bill', amount: 'Pending', priority: 'High' },
+
+        // Inventory
+        { category: 'investment', name: 'Distilled water for battery', amount: 'Stock', priority: 'Medium' },
+        { category: 'investment', name: 'Coolant', amount: 'Stock', priority: 'Medium' },
+        { category: 'investment', name: 'Lubricant', amount: 'Stock', priority: 'Medium' },
+        { category: 'investment', name: 'Gear Oil', amount: 'Stock', priority: 'Medium' },
+        { category: 'investment', name: 'Used Fridge', amount: 'Cold drinks, snacks, water', priority: 'Low' }
+    ];
+
     let itemsMap = {};
 
     function parseAmount(val) {
@@ -436,8 +471,22 @@
         calculateTotals(itemsArray);
     }
 
+    // Auto-seed database if empty
+    function seedInitialData() {
+        defaultItems.forEach(item => {
+            const newRef = push(itemsRef);
+            set(newRef, item);
+        });
+    }
+
     // Real-time listener from Firebase
     onValue(itemsRef, (snapshot) => {
+        if (!snapshot.exists()) {
+            // Seed database if empty
+            seedInitialData();
+            return;
+        }
+        
         itemsMap = snapshot.val() || {};
         renderLists();
         document.getElementById('syncStatus').innerText = '🟢 Live & Synced with Database';
